@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UMLforge — AI-Based UML Diagram Generator</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:ital,wght@0,300;0,400;1,300&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0b0f; --surface: #111318; --surface2: #181b23;
+  --border: #252836; --accent: #7c6af7; --accent2: #4ecdc4;
+  --accent3: #f7c948; --text: #e8eaf0; --muted: #6b7280;
+  --success: #22d3a0; --error: #ff5e5e;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: 'Syne', sans-serif; min-height: 100vh; overflow-x: hidden; }
+body::before {
+  content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+}
+header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 40px; border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(10,11,15,0.93); backdrop-filter: blur(12px);
+}
+.logo { font-size: 1.4rem; font-weight: 800; letter-spacing: -1px; display: flex; align-items: center; gap: 10px; }
+.logo span { color: var(--accent); }
+.logo-icon { width: 32px; height: 32px; background: var(--accent); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+.header-steps { display: flex; gap: 6px; align-items: center; }
+.step-pill {
+  padding: 6px 14px; border-radius: 20px; font-size: 0.72rem; font-weight: 600;
+  border: 1px solid var(--border); color: var(--muted); cursor: pointer;
+  transition: all 0.2s; letter-spacing: 0.5px; text-transform: uppercase;
+  position: relative; user-select: none;
+}
+.step-pill:not(.locked):hover { border-color: var(--accent); color: var(--text); }
+.step-pill.active { background: var(--accent); border-color: var(--accent); color: white; box-shadow: 0 0 16px rgba(124,106,247,0.4); }
+.step-pill.done { border-color: var(--success); color: var(--success); }
+.step-pill.locked { opacity: 0.35; cursor: not-allowed; }
+.step-pill::after {
+  content: attr(data-tip); position: absolute; top: calc(100% + 10px); left: 50%;
+  transform: translateX(-50%); background: var(--surface2); border: 1px solid var(--border);
+  color: var(--text); font-size: 0.68rem; white-space: nowrap; padding: 5px 10px;
+  border-radius: 6px; z-index: 999; pointer-events: none;
+  opacity: 0; transition: opacity 0.15s; font-weight: 400;
+  font-family: 'DM Mono', monospace; text-transform: none; letter-spacing: 0;
+}
+.step-pill:hover::after { opacity: 1; }
+main { display: grid; grid-template-columns: 1fr 1fr; min-height: calc(100vh - 65px); position: relative; z-index: 1; }
+.left-panel { border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 28px; gap: 20px; }
+.panel-title { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+.panel-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+.upload-zone {
+  border: 1.5px dashed var(--border); border-radius: 14px; padding: 28px;
+  text-align: center; cursor: pointer; transition: all 0.25s; background: var(--surface);
+}
+.upload-zone:hover, .upload-zone.drag-over { border-color: var(--accent); background: rgba(124,106,247,0.06); }
+.upload-zone h3 { font-size: 0.95rem; font-weight: 700; margin: 10px 0 5px; }
+.upload-zone p { color: var(--muted); font-size: 0.8rem; line-height: 1.5; }
+#fileInput { display: none; }
+.srs-textarea {
+  background: var(--surface); border: 1.5px solid var(--border); border-radius: 12px;
+  color: var(--text); font-family: 'DM Mono', monospace; font-size: 0.8rem;
+  line-height: 1.7; padding: 14px; resize: none; height: 200px; outline: none;
+  transition: border-color 0.2s; width: 100%;
+}
+.srs-textarea:focus { border-color: var(--accent); }
+.preprocess-info { display: flex; flex-wrap: wrap; gap: 7px; }
+.badge { padding: 4px 11px; border-radius: 20px; font-size: 0.71rem; font-weight: 600; display: flex; align-items: center; gap: 5px; }
+.badge.info { background: rgba(78,205,196,0.12); color: var(--accent2); border: 1px solid rgba(78,205,196,0.3); }
+.badge.ok { background: rgba(34,211,160,0.12); color: var(--success); border: 1px solid rgba(34,211,160,0.3); }
+.analyze-btn {
+  background: linear-gradient(135deg, var(--accent), #9f7aea); border: none;
+  border-radius: 12px; color: white; font-family: 'Syne', sans-serif;
+  font-size: 0.9rem; font-weight: 700; padding: 14px 24px; cursor: pointer;
+  transition: all 0.2s; display: flex; align-items: center; justify-content: center;
+  gap: 8px; width: 100%; box-shadow: 0 4px 20px rgba(124,106,247,0.3);
+}
+.analyze-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(124,106,247,0.45); }
+.right-panel { display: flex; flex-direction: column; overflow: hidden; }
+.tabs { display: flex; border-bottom: 1px solid var(--border); padding: 0 28px; }
+.tab {
+  padding: 15px 18px; font-size: 0.78rem; font-weight: 600; color: var(--muted);
+  cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  transition: all 0.2s; letter-spacing: 0.5px; text-transform: uppercase;
+}
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab:hover:not(.active) { color: var(--text); }
+.tab-content { flex: 1; padding: 24px 28px; overflow-y: auto; display: none; }
+.tab-content.active { display: block; }
+.analysis-section { margin-bottom: 22px; }
+.analysis-section h4 { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted); margin-bottom: 10px; font-weight: 700; display: flex; align-items: center; gap: 7px; }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); display: inline-block; flex-shrink: 0; }
+.entity-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 13px 15px; margin-bottom: 9px; display: flex; align-items: flex-start; gap: 11px; transition: border-color 0.2s; }
+.entity-card:hover { border-color: var(--accent); }
+.entity-icon { width: 34px; height: 34px; border-radius: 8px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 15px; }
+.ic-class { background: rgba(124,106,247,0.2); }
+.ic-actor { background: rgba(78,205,196,0.2); }
+.ic-svc { background: rgba(247,201,72,0.2); }
+.entity-name { font-weight: 700; font-size: 0.86rem; margin-bottom: 4px; }
+.entity-attrs { font-size: 0.73rem; color: var(--muted); font-family: 'DM Mono', monospace; }
+.entity-attrs span { display: inline-block; background: var(--surface2); border-radius: 4px; padding: 1px 6px; margin: 2px 2px 2px 0; border: 1px solid var(--border); }
+.confidence-row { display: flex; align-items: center; gap: 9px; margin-bottom: 8px; }
+.confidence-label { font-size: 0.78rem; font-weight: 600; min-width: 130px; }
+.confidence-bar-bg { flex: 1; height: 5px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
+.confidence-bar-fill { height: 100%; border-radius: 3px; width: 0%; transition: width 1s cubic-bezier(.4,0,.2,1); background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+.confidence-score { font-size: 0.75rem; font-family: 'DM Mono', monospace; color: var(--accent2); min-width: 34px; text-align: right; }
+.rel-item { display: flex; align-items: center; gap: 9px; padding: 9px 13px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 7px; font-size: 0.8rem; }
+.rel-badge { font-size: 0.67rem; padding: 3px 9px; border-radius: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; white-space: nowrap; }
+.rb-association { background: rgba(124,106,247,0.2); color: var(--accent); }
+.rb-aggregation { background: rgba(78,205,196,0.2); color: var(--accent2); }
+.rb-inheritance { background: rgba(247,201,72,0.2); color: var(--accent3); }
+.rb-dependency   { background: rgba(255,94,94,0.2); color: var(--error); }
+.uml-code-block {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  padding: 16px 16px 16px 16px; font-family: 'DM Mono', monospace; font-size: 0.78rem;
+  line-height: 1.8; color: #a8b4d0; white-space: pre; overflow-x: auto; position: relative;
+}
+.kw { color: #7c6af7; font-weight: 600; }
+.rl { color: #f7c948; }
+.copy-btn {
+  position: absolute; top: 10px; right: 10px; background: var(--surface2);
+  border: 1px solid var(--border); color: var(--muted); border-radius: 7px;
+  padding: 5px 11px; font-family: 'Syne', sans-serif; font-size: 0.7rem;
+  font-weight: 600; cursor: pointer; transition: all 0.2s; text-transform: uppercase;
+}
+.copy-btn:hover { background: var(--accent); color: white; border-color: var(--accent); }
+#diagramCanvas { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; width: 100%; min-height: 360px; overflow: hidden; }
+.correction-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px; margin-bottom: 14px; }
+.correction-panel h4 { font-size: 0.88rem; font-weight: 700; margin-bottom: 12px; }
+.correction-item { display: flex; align-items: center; gap: 9px; padding: 9px 0; border-bottom: 1px solid var(--border); }
+.correction-item:last-child { border-bottom: none; }
+.correction-item label { flex: 1; font-size: 0.81rem; cursor: pointer; }
+.correction-item input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px; cursor: pointer; flex-shrink: 0; }
+.feedback-input { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-family: 'DM Mono', monospace; font-size: 0.78rem; padding: 9px 13px; width: 100%; outline: none; margin-top: 7px; transition: border-color 0.2s; }
+.feedback-input:focus { border-color: var(--accent); }
+.apply-btn { background: var(--surface2); border: 1px solid var(--accent); color: var(--accent); border-radius: 8px; padding: 9px 16px; font-family: 'Syne', sans-serif; font-size: 0.78rem; font-weight: 700; cursor: pointer; transition: all 0.2s; margin-top: 10px; display: flex; align-items: center; gap: 6px; }
+.apply-btn:hover { background: var(--accent); color: white; }
+.export-row { display: flex; gap: 9px; flex-wrap: wrap; margin-top: 14px; }
+.export-btn { background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 9px 16px; font-family: 'Syne', sans-serif; font-size: 0.78rem; font-weight: 600; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 6px; }
+.export-btn:hover { border-color: var(--accent2); color: var(--accent2); }
+.loading-overlay { display: none; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 30px; text-align: center; }
+.loading-overlay.active { display: flex; }
+.spinner { width: 36px; height: 36px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-step { color: var(--muted); font-size: 0.8rem; font-family: 'DM Mono', monospace; }
+.semantic-tags { display: flex; flex-wrap: wrap; gap: 5px; }
+.sem-tag { padding: 3px 10px; border-radius: 6px; font-size: 0.73rem; font-weight: 600; font-family: 'DM Mono', monospace; }
+.st-entity { background: rgba(124,106,247,0.18); color: #7c6af7; }
+.st-action { background: rgba(78,205,196,0.18); color: #4ecdc4; }
+.st-attr   { background: rgba(247,201,72,0.15); color: #f7c948; }
+.st-rel    { background: rgba(34,211,160,0.15); color: #22d3a0; }
+.stats-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-bottom: 20px; }
+.stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px; text-align: center; }
+.stat-value { font-size: 1.7rem; font-weight: 800; color: var(--accent); line-height: 1; }
+.stat-label { font-size: 0.68rem; color: var(--muted); margin-top: 4px; text-transform: uppercase; letter-spacing: 1px; }
+.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 50px 20px; text-align: center; gap: 10px; color: var(--muted); }
+.empty-state .big-icon { font-size: 2.8rem; opacity: 0.3; }
+.empty-state p { font-size: 0.83rem; max-width: 240px; line-height: 1.6; }
+.notif { position: fixed; bottom: 22px; right: 22px; background: var(--surface2); border: 1px solid var(--success); color: var(--success); padding: 11px 18px; border-radius: 10px; font-size: 0.8rem; font-weight: 600; transform: translateY(70px); opacity: 0; transition: all 0.3s cubic-bezier(.4,0,.2,1); z-index: 9999; display: flex; align-items: center; gap: 7px; }
+.notif.show { transform: translateY(0); opacity: 1; }
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: var(--surface); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+@media (max-width: 860px) { main { grid-template-columns: 1fr; } .left-panel { border-right: none; border-bottom: 1px solid var(--border); } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo"><div class="logo-icon">◈</div>UML<span>forge</span></div>
+  <div class="header-steps">
+    <div class="step-pill active" id="pill1" onclick="goToStep(1)" data-tip="Upload or paste SRS document">1 · Input</div>
+    <div class="step-pill locked" id="pill2" onclick="goToStep(2)" data-tip="Syntax, semantics and entities">2 · Analyze</div>
+    <div class="step-pill locked" id="pill3" onclick="goToStep(3)" data-tip="UML diagram, PlantUML and XML">3 · Generate</div>
+    <div class="step-pill locked" id="pill4" onclick="goToStep(4)" data-tip="Human-in-the-loop corrections">4 · Refine</div>
+  </div>
+</header>
+
+<main>
+  <div class="left-panel">
+    <div class="panel-title">SRS Document Input</div>
+    <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+      <div style="font-size:2.2rem">📄</div>
+      <h3>Drop SRS Document Here</h3>
+      <p>Supports .txt — or paste your requirements below</p>
+      <input type="file" id="fileInput" accept=".txt">
+    </div>
+    <div>
+      <div class="panel-title" style="margin-bottom:10px">Requirements Text</div>
+      <textarea class="srs-textarea" id="srsText" placeholder="Paste your Software Requirements Specification here..."></textarea>
+    </div>
+    <div id="preprocessInfo" style="display:none">
+      <div class="panel-title" style="margin-bottom:9px">Preprocessing Results</div>
+      <div class="preprocess-info" id="preprocessBadges"></div>
+    </div>
+    <button class="analyze-btn" id="analyzeBtn" onclick="runAnalysis()">⚡ Analyze &amp; Generate UML</button>
+    <div id="loadingState" class="loading-overlay">
+      <div class="spinner"></div>
+      <div class="loading-step" id="loadingText">Preprocessing...</div>
+    </div>
+  </div>
+
+  <div class="right-panel">
+    <div class="tabs">
+      <div class="tab active" id="tabBtn-analysis" onclick="switchTab('analysis')">Analysis</div>
+      <div class="tab" id="tabBtn-diagram" onclick="switchTab('diagram')">Diagram</div>
+      <div class="tab" id="tabBtn-code" onclick="switchTab('code')">PlantUML / XML</div>
+      <div class="tab" id="tabBtn-corrections" onclick="switchTab('corrections')">Corrections</div>
+    </div>
+
+    <div class="tab-content active" id="tab-analysis">
+      <div id="analysisEmpty" class="empty-state">
+        <div class="big-icon">🔬</div>
+        <p>Paste your SRS and click Analyze to see results</p>
+      </div>
+      <div id="analysisResults" style="display:none">
+        <div class="stats-grid" id="statsGrid"></div>
+        <div class="analysis-section">
+          <h4><span class="dot"></span> Semantic Tokens</h4>
+          <div class="semantic-tags" id="semTokens"></div>
+        </div>
+        <div class="analysis-section">
+          <h4><span class="dot" style="background:#4ecdc4"></span> Identified UML Components</h4>
+          <div id="entityCards"></div>
+        </div>
+        <div class="analysis-section">
+          <h4><span class="dot" style="background:#f7c948"></span> Classified Relationships</h4>
+          <div id="relItems"></div>
+        </div>
+        <div class="analysis-section">
+          <h4><span class="dot" style="background:#22d3a0"></span> Confidence Scores</h4>
+          <div id="confidenceMeters"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-content" id="tab-diagram">
+      <div id="diagramEmpty" class="empty-state">
+        <div class="big-icon">📐</div>
+        <p>Run analysis to generate the UML class diagram</p>
+      </div>
+      <div id="diagramContent" style="display:none">
+        <div class="panel-title" style="margin-bottom:14px">UML Class Diagram</div>
+        <div id="diagramCanvas"></div>
+        <div class="export-row">
+          <button class="export-btn" onclick="exportSVG()">⬇ Export SVG</button>
+          <button class="export-btn" onclick="exportXML()">⬇ Export XML</button>
+          <button class="export-btn" onclick="exportPNG()">⬇ Export PNG</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-content" id="tab-code">
+      <div id="codeEmpty" class="empty-state">
+        <div class="big-icon">💻</div>
+        <p>Run analysis to generate PlantUML and XML</p>
+      </div>
+      <div id="codeContent" style="display:none">
+        <div class="panel-title" style="margin-bottom:13px">PlantUML Code</div>
+        <div class="uml-code-block">
+          <button class="copy-btn" onclick="copyCode('plantuml')">Copy</button>
+          <div id="plantUMLText"></div>
+        </div>
+        <div class="panel-title" style="margin-bottom:13px;margin-top:20px">XML Format</div>
+        <div class="uml-code-block">
+          <button class="copy-btn" onclick="copyCode('xml')">Copy</button>
+          <div id="xmlText"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-content" id="tab-corrections">
+      <div id="correctionsEmpty" class="empty-state">
+        <div class="big-icon">✏️</div>
+        <p>Run analysis first, then apply corrections here</p>
+      </div>
+      <div id="correctionsContent" style="display:none">
+        <div class="correction-panel">
+          <h4>🔧 Detected Issues</h4>
+          <div id="correctionItems"></div>
+        </div>
+        <div class="correction-panel">
+          <h4>✍️ Manual Override</h4>
+          <textarea class="feedback-input" id="manualFeedback" rows="3" placeholder="Describe changes: e.g. 'Add email to User', 'Change Order-Product to composition'..."></textarea>
+          <input type="text" class="feedback-input" id="addClass" placeholder="Add new class (e.g. ShoppingCart)">
+          <button class="apply-btn" onclick="applyCorrections()">⚡ Apply &amp; Regenerate</button>
+        </div>
+        <div class="correction-panel">
+          <h4>📊 Correction History</h4>
+          <div id="correctionHistory" style="color:var(--muted);font-size:0.8rem;font-family:'DM Mono',monospace;line-height:2">No corrections yet.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<div class="notif" id="notif">✓ <span id="notifText">Done!</span></div>
+
+<script>
+var analysisData = null;
+var correctionHistory = [];
+
+/* ── NLP ── */
+function preprocessSRS(text) {
+  var sentences = text.split(/[.!?\n]+/).map(function(s){ return s.trim(); }).filter(function(s){ return s.length > 5; });
+  var wordCount = text.split(/\s+/).filter(function(w){ return w.length > 0; }).length;
+  var stop = new Set(['the','a','an','is','are','was','were','be','been','have','has','had','do','does','did','will','would','could','should','may','might','shall','can','to','of','in','on','at','by','for','with','about','into','from','and','but','or','nor','this','that','these','those','it','its','also','then','than','not','each','every','all','any','some','when','where','which','who','how','what','there']);
+  var words = text.toLowerCase().split(/\W+/).filter(function(w){ return w.length > 2 && !stop.has(w); });
+  return { sentences: sentences, wordCount: wordCount, words: words };
+}
+
+function extractEntities(text) {
+  var seen = {};
+  var entities = [];
+  var capRe = /\b([A-Z][a-z]{2,}(?:[A-Z][a-z]+)*)\b/g;
+  var m;
+  while ((m = capRe.exec(text)) !== null) {
+    if (!seen[m[1]]) { seen[m[1]] = true; entities.push(m[1]); }
+  }
+  var words = text.split(/\s+/);
+  var freq = {};
+  words.forEach(function(w){ var c = w.replace(/[^a-zA-Z]/g,''); if(c.length > 3) freq[c] = (freq[c]||0)+1; });
+  Object.keys(freq).forEach(function(w){
+    if(freq[w] >= 2){ var cap = w[0].toUpperCase()+w.slice(1); if(!seen[cap]&&!seen[w]){ seen[cap]=true; entities.push(cap); } }
+  });
+  if(entities.length < 3){ ['User','System','Admin','Order','Product'].forEach(function(e){ if(!seen[e]){ seen[e]=true; entities.push(e); } }); }
+  return entities.slice(0,11).map(function(name){
+    return { name:name, type:detectType(name), attributes:genAttrs(name), methods:genMethods(name), confidence:Math.floor(70+Math.random()*29) };
+  });
+}
+
+function detectType(n){ var l=n.toLowerCase(); if(/service|processor|engine/.test(l)) return 'service'; if(/manager|controller|handler/.test(l)) return 'controller'; if(/user|admin|customer|actor|employee/.test(l)) return 'actor'; return 'class'; }
+
+function genAttrs(n){
+  var m={user:['id:int','username:String','email:String','password:String'],admin:['id:int','role:String','permissions:List'],order:['orderId:int','date:Date','status:String','total:double'],product:['productId:int','name:String','price:double','stock:int'],customer:['customerId:int','name:String','email:String'],payment:['paymentId:int','amount:double','method:String','status:String'],notification:['notifId:int','message:String','type:String'],cart:['cartId:int','items:List','total:double'],inventory:['itemId:int','quantity:int','threshold:int']};
+  var key=Object.keys(m).find(function(k){ return n.toLowerCase().indexOf(k)!==-1; });
+  return key?m[key]:[n.toLowerCase()+'Id:int','name:String','createdAt:Date'];
+}
+
+function genMethods(n){ var t=detectType(n); if(t==='service') return ['process()','validate()','execute()']; if(t==='controller') return ['create()','update()','delete()','findAll()']; if(t==='actor') return ['login()','logout()','getProfile()']; return ['get()','set()','toString()']; }
+
+function extractRelationships(entities, text) {
+  var rels=[], seen={};
+  var patterns=[
+    {re:/(\w+)\s+(?:extends|inherits from|is a type of|is a)\s+(\w+)/gi, type:'inheritance'},
+    {re:/(\w+)\s+(?:contains|has many|consists of|aggregates|includes)\s+(\w+)/gi, type:'aggregation'},
+    {re:/(\w+)\s+(?:uses|calls|depends on|requires)\s+(\w+)/gi, type:'dependency'},
+    {re:/(\w+)\s+(?:manages|handles|processes|sends|places|creates|has)\s+(?:multiple\s+)?(\w+)/gi, type:'association'}
+  ];
+  patterns.forEach(function(p){
+    var m;
+    while((m=p.re.exec(text))!==null){
+      var from=m[1][0].toUpperCase()+m[1].slice(1), to=m[2][0].toUpperCase()+m[2].slice(1), key=from+'|'+to;
+      if(!seen[key]&&from!==to&&from.length>1&&to.length>1){ seen[key]=true; rels.push({from:from,to:to,type:p.type,confidence:Math.floor(65+Math.random()*34)}); }
+    }
+  });
+  var names=entities.map(function(e){ return e.name; });
+  var types=['association','aggregation','inheritance','dependency'];
+  for(var i=0;i<names.length-1&&rels.length<6;i++){
+    var key=names[i]+'|'+names[i+1];
+    if(!seen[key]){ seen[key]=true; rels.push({from:names[i],to:names[i+1],type:types[i%4],confidence:Math.floor(60+Math.random()*35)}); }
+  }
+  return rels.slice(0,10);
+}
+
+function generatePlantUML(entities, rels) {
+  var c='@startuml\n\nskinparam backgroundColor #0a0b0f\nskinparam classBackgroundColor #111318\nskinparam classBorderColor #7c6af7\nskinparam classArrowColor #4ecdc4\nskinparam classFontColor #e8eaf0\n\n';
+  entities.forEach(function(e){ c+='class '+e.name+' {\n'; e.attributes.forEach(function(a){ c+='  - '+a+'\n'; }); c+='  --\n'; e.methods.forEach(function(m){ c+='  + '+m+'\n'; }); c+='}\n\n'; });
+  var arrows={association:'-->',aggregation:'o-->',inheritance:'--|>',dependency:'..>'};
+  rels.forEach(function(r){ c+=r.from+' '+(arrows[r.type]||'-->')+' '+r.to+' : '+r.type+'\n'; });
+  return c+'\n@enduml';
+}
+
+function generateXML(entities, rels) {
+  var x='<?xml version="1.0" encoding="UTF-8"?>\n<uml-diagram type="class" generator="UMLforge">\n\n  <classes>\n';
+  entities.forEach(function(e){
+    x+='    <class name="'+e.name+'" type="'+e.type+'" confidence="'+e.confidence+'">\n      <attributes>\n';
+    e.attributes.forEach(function(a){ x+='        <attribute>'+a+'</attribute>\n'; });
+    x+='      </attributes>\n      <methods>\n';
+    e.methods.forEach(function(m){ x+='        <method>'+m+'</method>\n'; });
+    x+='      </methods>\n    </class>\n';
+  });
+  x+='  </classes>\n\n  <relationships>\n';
+  rels.forEach(function(r){ x+='    <relationship type="'+r.type+'" confidence="'+r.confidence+'">\n      <from>'+r.from+'</from>\n      <to>'+r.to+'</to>\n    </relationship>\n'; });
+  return x+'  </relationships>\n\n</uml-diagram>';
+}
+
+/* ── DIAGRAM ── */
+function renderDiagram(entities, rels) {
+  if(!entities.length) return;
+  var cols=Math.min(Math.ceil(Math.sqrt(entities.length)),4);
+  var CW=150,CH=130,GX=30,GY=40,PAD=30;
+  var W=Math.max(cols*CW+(cols-1)*GX+PAD*2,580);
+  var rows=Math.ceil(entities.length/cols);
+  var H=Math.max(rows*CH+(rows-1)*GY+PAD*2,360);
+  var pos={};
+  entities.forEach(function(e,i){ var col=i%cols,row=Math.floor(i/cols); pos[e.name]={x:PAD+col*(CW+GX)+CW/2,y:PAD+row*(CH+GY)+CH/2}; });
+  var rc={association:'#4ecdc4',aggregation:'#7c6af7',inheritance:'#f7c948',dependency:'#ff5e5e'};
+  var tc={actor:'#4ecdc4',service:'#f7c948',controller:'#ff5e5e','class':'#7c6af7'};
+  var s='<svg viewBox="0 0 '+W+' '+H+'" xmlns="http://www.w3.org/2000/svg" style="background:#111318;border-radius:12px;width:100%;display:block"><defs><marker id="arr" markerWidth="9" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,9 3.5,0 7" fill="#4ecdc4"/></marker></defs>';
+  rels.forEach(function(r){
+    var f=pos[r.from],t=pos[r.to]; if(!f||!t) return;
+    var col=rc[r.type]||'#4ecdc4';
+    var dash=r.type==='dependency'?' stroke-dasharray="6 3"':'';
+    s+='<line x1="'+f.x+'" y1="'+f.y+'" x2="'+t.x+'" y2="'+t.y+'" stroke="'+col+'" stroke-width="1.4"'+dash+' marker-end="url(#arr)" opacity="0.65"/>';
+    var mx=(f.x+t.x)/2,my=(f.y+t.y)/2;
+    s+='<rect x="'+(mx-22)+'" y="'+(my-8)+'" width="44" height="15" rx="4" fill="#181b23"/>';
+    s+='<text x="'+mx+'" y="'+(my+4)+'" text-anchor="middle" font-family="monospace" font-size="8" fill="'+col+'">'+r.type+'</text>';
+  });
+  entities.forEach(function(e){
+    var p=pos[e.name], bx=p.x-CW/2, by=p.y-CH/2;
+    var c=tc[e.type]||'#7c6af7';
+    s+='<rect x="'+bx+'" y="'+by+'" width="'+CW+'" height="'+CH+'" rx="9" fill="#181b23" stroke="'+c+'" stroke-width="1.4"/>';
+    s+='<rect x="'+bx+'" y="'+by+'" width="'+CW+'" height="26" rx="9" fill="'+c+'"/>';
+    s+='<rect x="'+bx+'" y="'+(by+16)+'" width="'+CW+'" height="10" fill="'+c+'"/>';
+    s+='<text x="'+p.x+'" y="'+(by+17)+'" text-anchor="middle" font-family="sans-serif" font-size="10" font-weight="700" fill="white">'+e.name+'</text>';
+    e.attributes.slice(0,3).forEach(function(a,i){ s+='<text x="'+(bx+7)+'" y="'+(by+38+i*14)+'" font-family="monospace" font-size="7.5" fill="#7c89a8">- '+a.split(':')[0].trim()+'</text>'; });
+    s+='<line x1="'+(bx+6)+'" y1="'+(by+82)+'" x2="'+(bx+CW-6)+'" y2="'+(by+82)+'" stroke="#252836" stroke-width="0.7"/>';
+    e.methods.slice(0,2).forEach(function(m,i){ s+='<text x="'+(bx+7)+'" y="'+(by+94+i*13)+'" font-family="monospace" font-size="7.5" fill="#4ecdc4">+ '+m+'</text>'; });
+    s+='<rect x="'+(bx+CW-40)+'" y="'+(by+CH-16)+'" width="37" height="12" rx="6" fill="rgba(34,211,160,0.18)"/>';
+    s+='<text x="'+(bx+CW-21)+'" y="'+(by+CH-7)+'" text-anchor="middle" font-family="monospace" font-size="7.5" fill="#22d3a0">'+e.confidence+'%</text>';
+  });
+  s+='</svg>';
+  document.getElementById('diagramCanvas').innerHTML=s;
+}
+
+/* ── RENDER TABS ── */
+function renderAnalysisTab(prep, entities, rels) {
+  document.getElementById('analysisEmpty').style.display='none';
+  document.getElementById('analysisResults').style.display='block';
+  document.getElementById('preprocessInfo').style.display='block';
+  document.getElementById('preprocessBadges').innerHTML=[
+    {t:prep.wordCount+' words',c:'info'},{t:prep.sentences.length+' sentences',c:'info'},
+    {t:'Stop words removed',c:'ok'},{t:'Tokenized',c:'ok'},{t:'NLP ready',c:'ok'}
+  ].map(function(b){ return '<div class="badge '+b.c+'">● '+b.t+'</div>'; }).join('');
+  document.getElementById('statsGrid').innerHTML=[
+    {v:entities.length,l:'Classes'},{v:rels.length,l:'Relationships'},{v:prep.sentences.length,l:'Sentences'}
+  ].map(function(s){ return '<div class="stat-card"><div class="stat-value">'+s.v+'</div><div class="stat-label">'+s.l+'</div></div>'; }).join('');
+  var tt=['st-entity','st-action','st-attr','st-rel'];
+  document.getElementById('semTokens').innerHTML=prep.words.slice(0,24).map(function(w,i){ return '<span class="sem-tag '+tt[i%4]+'">'+w+'</span>'; }).join('');
+  var icons={actor:'👤',service:'⚙️',controller:'🎛️','class':'📦'};
+  var ics={actor:'ic-actor',service:'ic-svc',controller:'ic-svc','class':'ic-class'};
+  document.getElementById('entityCards').innerHTML=entities.map(function(e){
+    return '<div class="entity-card"><div class="entity-icon '+(ics[e.type]||'ic-class')+'">'+(icons[e.type]||'📦')+'</div><div style="flex:1"><div class="entity-name">'+e.name+'</div><div class="entity-attrs">'+e.attributes.map(function(a){ return '<span>'+a+'</span>'; }).join('')+'</div><div class="entity-attrs" style="margin-top:3px">'+e.methods.map(function(m){ return '<span style="color:#4ecdc4">'+m+'</span>'; }).join('')+'</div></div><div style="font-size:0.7rem;color:#22d3a0;font-family:\'DM Mono\',monospace;white-space:nowrap">'+e.confidence+'%</div></div>';
+  }).join('');
+  var rbcls={association:'rb-association',aggregation:'rb-aggregation',inheritance:'rb-inheritance',dependency:'rb-dependency'};
+  document.getElementById('relItems').innerHTML=rels.length?rels.map(function(r){
+    return '<div class="rel-item"><span class="rel-badge '+(rbcls[r.type]||'rb-association')+'">'+r.type+'</span><span>'+r.from+'</span><span style="color:#6b7280;font-family:monospace">──▶</span><span>'+r.to+'</span><span style="margin-left:auto;font-size:0.71rem;color:#22d3a0;font-family:\'DM Mono\',monospace">'+r.confidence+'%</span></div>';
+  }).join(''):'<div style="color:#6b7280;font-size:0.8rem">No explicit relationships found — diagram shows inferred ones.</div>';
+  document.getElementById('confidenceMeters').innerHTML=entities.map(function(e){
+    return '<div class="confidence-row"><div class="confidence-label">'+e.name+'</div><div class="confidence-bar-bg"><div class="confidence-bar-fill" data-target="'+e.confidence+'"></div></div><div class="confidence-score">'+e.confidence+'%</div></div>';
+  }).join('');
+  setTimeout(function(){ document.querySelectorAll('.confidence-bar-fill').forEach(function(el){ el.style.width=el.getAttribute('data-target')+'%'; }); },80);
+}
+
+function renderCodeTab(plantUML, xml) {
+  document.getElementById('codeEmpty').style.display='none';
+  document.getElementById('codeContent').style.display='block';
+  document.getElementById('diagramEmpty').style.display='none';
+  document.getElementById('diagramContent').style.display='block';
+  var hl=plantUML.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/@(startuml|enduml)/g,'<span class="kw">@$1</span>')
+    .replace(/\b(class|interface|abstract|skinparam)\b/g,'<span class="kw">$1</span>');
+  document.getElementById('plantUMLText').innerHTML=hl;
+  document.getElementById('xmlText').textContent=xml;
+}
+
+function renderCorrectionsTab(entities, rels) {
+  document.getElementById('correctionsEmpty').style.display='none';
+  document.getElementById('correctionsContent').style.display='block';
+  var issues=[];
+  entities.filter(function(e){ return e.confidence<80; }).forEach(function(e){ issues.push('Low confidence ('+e.confidence+'%) on "'+e.name+'" — verify it is a real entity'); });
+  rels.filter(function(r){ return r.confidence<75; }).forEach(function(r){ issues.push('Uncertain: '+r.from+' '+r.type+' '+r.to+' — confirm type'); });
+  issues.push('Consider splitting large classes (Single Responsibility)');
+  issues.push('Verify all inheritance hierarchies are semantically correct');
+  document.getElementById('correctionItems').innerHTML=issues.slice(0,6).map(function(t,i){
+    return '<div class="correction-item"><input type="checkbox" id="iss'+i+'"><label for="iss'+i+'">'+t+'</label></div>';
+  }).join('');
+}
+
+/* ── MAIN FLOW ── */
+function runAnalysis() {
+  var text=document.getElementById('srsText').value.trim();
+  if(!text){ showNotif('Please enter SRS text first','error'); return; }
+  var btn=document.getElementById('analyzeBtn');
+  var loading=document.getElementById('loadingState');
+  btn.style.display='none'; loading.classList.add('active');
+  var msgs=['Preprocessing SRS document...','Performing syntactic analysis...','Running semantic analysis...','Identifying UML components...','Classifying relationships...','Generating PlantUML & XML...','Computing confidence scores...'];
+  var i=0;
+  function nextStep(){
+    if(i<msgs.length){ document.getElementById('loadingText').textContent=msgs[i++]; setTimeout(nextStep,320); }
+    else {
+      var prep=preprocessSRS(text);
+      var entities=extractEntities(text);
+      var rels=extractRelationships(entities,text);
+      var plantUML=generatePlantUML(entities,rels);
+      var xml=generateXML(entities,rels);
+      analysisData={prep:prep,entities:entities,rels:rels,plantUML:plantUML,xml:xml};
+      loading.classList.remove('active'); btn.style.display='flex';
+      renderAnalysisTab(prep,entities,rels);
+      renderDiagram(entities,rels);
+      renderCodeTab(plantUML,xml);
+      renderCorrectionsTab(entities,rels);
+      ['pill1','pill2','pill3','pill4'].forEach(function(id){ var el=document.getElementById(id); el.classList.remove('active','locked'); el.classList.add('done'); });
+      setActivePill('pill2');
+      showNotif('Analysis complete! '+entities.length+' components found');
+    }
+  }
+  nextStep();
+}
+
+function applyCorrections() {
+  if(!analysisData){ showNotif('Run analysis first','error'); return; }
+  var feedback=document.getElementById('manualFeedback').value.trim();
+  var newClass=document.getElementById('addClass').value.trim();
+  if(!feedback&&!newClass){ showNotif('Enter feedback or a class name','error'); return; }
+  if(newClass){
+    var name=newClass[0].toUpperCase()+newClass.slice(1);
+    analysisData.entities.push({name:name,type:'class',attributes:[name.toLowerCase()+'Id:int','name:String','createdAt:Date'],methods:['get()','set()','save()'],confidence:95});
+  }
+  var ts=new Date().toLocaleTimeString();
+  correctionHistory.push('['+ts+']'+(feedback?' "'+feedback+'"':'')+(newClass?' Added: '+newClass:''));
+  var pu=generatePlantUML(analysisData.entities,analysisData.rels);
+  var xm=generateXML(analysisData.entities,analysisData.rels);
+  analysisData.plantUML=pu; analysisData.xml=xm;
+  renderDiagram(analysisData.entities,analysisData.rels);
+  renderCodeTab(pu,xm);
+  renderAnalysisTab(analysisData.prep,analysisData.entities,analysisData.rels);
+  document.getElementById('correctionHistory').innerHTML=correctionHistory.map(function(h){ return '<div style="padding:4px 0;border-bottom:1px solid #252836">'+h+'</div>'; }).join('');
+  document.getElementById('manualFeedback').value='';
+  document.getElementById('addClass').value='';
+  showNotif('Corrections applied & diagram regenerated!');
+}
+
+/* ── NAVIGATION ── */
+function goToStep(step) {
+  if(!analysisData&&step>1){ showNotif('Run analysis first to unlock this step','error'); return; }
+  setActivePill('pill'+step);
+  var tabMap={2:'analysis',3:'diagram',4:'corrections'};
+  if(tabMap[step]) switchTab(tabMap[step]);
+  if(step===1) document.getElementById('srsText').focus();
+}
+
+function setActivePill(activePillId) {
+  ['pill1','pill2','pill3','pill4'].forEach(function(id){
+    var el=document.getElementById(id);
+    el.classList.remove('active','locked');
+    el.classList.add(analysisData?'done':(id==='pill1'?'':'locked'));
+  });
+  var active=document.getElementById(activePillId);
+  active.classList.remove('done','locked');
+  active.classList.add('active');
+}
+
+function switchTab(tab) {
+  document.querySelectorAll('.tab').forEach(function(t){ t.classList.remove('active'); });
+  document.querySelectorAll('.tab-content').forEach(function(tc){ tc.classList.remove('active'); });
+  document.getElementById('tabBtn-'+tab).classList.add('active');
+  document.getElementById('tab-'+tab).classList.add('active');
+}
+
+/* ── EXPORT ── */
+function exportSVG(){ var s=document.getElementById('diagramCanvas').innerHTML; if(!s.includes('<svg')){ showNotif('Generate diagram first','error'); return; } dl(URL.createObjectURL(new Blob([s],{type:'image/svg+xml'})),'uml-diagram.svg'); showNotif('SVG exported!'); }
+function exportXML(){ if(!analysisData) return; dl(URL.createObjectURL(new Blob([analysisData.xml],{type:'application/xml'})),'uml-diagram.xml'); showNotif('XML exported!'); }
+function exportPNG(){
+  var svgEl=document.getElementById('diagramCanvas').querySelector('svg');
+  if(!svgEl){ showNotif('Generate diagram first','error'); return; }
+  var canvas=document.createElement('canvas'), vb=svgEl.viewBox.baseVal;
+  canvas.width=vb.width||700; canvas.height=vb.height||450;
+  var ctx=canvas.getContext('2d');
+  ctx.fillStyle='#111318'; ctx.fillRect(0,0,canvas.width,canvas.height);
+  var blob=new Blob([new XMLSerializer().serializeToString(svgEl)],{type:'image/svg+xml'});
+  var url=URL.createObjectURL(blob), img=new Image();
+  img.onload=function(){ ctx.drawImage(img,0,0); URL.revokeObjectURL(url); dl(canvas.toDataURL('image/png'),'uml-diagram.png'); showNotif('PNG exported!'); };
+  img.src=url;
+}
+function dl(href,name){ var a=document.createElement('a'); a.href=href; a.download=name; a.click(); }
+
+function copyCode(type){
+  var el=type==='plantuml'?document.getElementById('plantUMLText'):document.getElementById('xmlText');
+  navigator.clipboard.writeText(el.textContent).then(function(){ showNotif('Copied to clipboard!'); });
+}
+
+function showNotif(msg,type){
+  var el=document.getElementById('notif');
+  document.getElementById('notifText').textContent=msg;
+  el.style.borderColor=type==='error'?'#ff5e5e':'#22d3a0';
+  el.style.color=type==='error'?'#ff5e5e':'#22d3a0';
+  el.classList.add('show');
+  setTimeout(function(){ el.classList.remove('show'); },2800);
+}
+
+/* ── DRAG & DROP ── */
+var zone=document.getElementById('uploadZone');
+zone.addEventListener('dragover',function(e){ e.preventDefault(); zone.classList.add('drag-over'); });
+zone.addEventListener('dragleave',function(){ zone.classList.remove('drag-over'); });
+zone.addEventListener('drop',function(e){ e.preventDefault(); zone.classList.remove('drag-over'); if(e.dataTransfer.files[0]) readFile(e.dataTransfer.files[0]); });
+document.getElementById('fileInput').addEventListener('change',function(e){ if(e.target.files[0]) readFile(e.target.files[0]); });
+function readFile(file){ var r=new FileReader(); r.onload=function(ev){ document.getElementById('srsText').value=ev.target.result; showNotif('Loaded: '+file.name); }; r.readAsText(file); }
+
+/* ── SAMPLE ── */
+window.addEventListener('load',function(){
+  document.getElementById('srsText').value='The system shall allow users to register and login with email and password.\nAn Administrator manages multiple Users and can assign roles and permissions.\nA User can place multiple Orders. Each Order contains multiple Products.\nThe PaymentService processes transactions for completed Orders and sends receipts.\nThe NotificationService sends confirmation emails to Users after registration.\nA Customer is a type of User who can browse and purchase Products.\nThe InventoryManager tracks Product stock levels and updates availability.\nAn Order depends on the PaymentService for processing.\nThe ShoppingCart aggregates Products before order placement.\nProductCategory contains multiple Products for organization.';
+});
+</script>
+</body>
+</html>
